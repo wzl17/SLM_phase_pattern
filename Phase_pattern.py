@@ -6,11 +6,10 @@ import scipy.fftpack as sfft
 import random
 import imageio
 import sys
-from pylab import *
 from mpl_toolkits.mplot3d import Axes3D
 import png as png
 
-def epsilon(u_int, target_im): 
+def epsilon(u_int, target_im):  
     # acquire error
     max = np.max(u_int[target_im==1]) #Max value of the obtained intensity at the tweezers position
     min = np.min(u_int[target_im==1]) #Min value of the obtained intensity at the tweezers position
@@ -40,13 +39,14 @@ def surface_plot(matrix, **kwargs):
     surf = ax.plot_surface(x, y, matrix, **kwargs)
     return (fig, ax, surf)
 
-def norm(matrix):
-    min=np.min(matrix);max=np.max(matrix);
+def normalize(matrix): 
+    min = np.min(matrix) 
+    max = np.max(matrix)
     return((matrix-min)/(max-min))
 
 def bin_norm_clip(matrix):  # Function that clips the values to 0-255 (SLM standard)
     matrix=np.array(target_im, dtype=np.uint8)
-    matrix=norm(matrix)
+    matrix=normalize(matrix)
     return(matrix)
 
 
@@ -63,14 +63,15 @@ def undiscretize_phase(phase):
     return(phase)
 
 # iteration number input
-n_rep = int(sys.argv[1])
-if(n_rep <= 0 or n_rep > 150):
-    print("Wrong number of iterations")
-    exit(0)
+n_rep = 50
+# n_rep = int(sys.argv[1])
+# if(n_rep <= 0 or n_rep > 150):
+#     print("Wrong number of iterations")
+#     exit(0)
 
 # import image
 target_im = Image.open("Img/point-13_100x100.bmp")
-target_im = norm(target_im)   # Image in intensity units [0,1]
+target_im = normalize(target_im)   # Image in intensity units [0,1]
 
 SIZE_X, SIZE_Y = target_im.shape
 fig, axs = plt.subplots(2,2)
@@ -85,7 +86,7 @@ axs[0,0].set_title('Target image')
 # The initial weights are all = 1.
 w = np.ones((SIZE_X,SIZE_Y))
 # The amplitude in the fourier plane is a Gaussian (beam)
-sigma = 255
+sigma = 500
 PS_shape = Beam_shape(SIZE_X,SIZE_Y,sigma,sigma,0,0) # "PS" = ?
 #plt.imshow(PS_shape)
 #plt.colorbar()
@@ -107,14 +108,14 @@ for rep in range(n_rep):
     # Calculate the intensity
     intensity = np.square(np.abs(u))
     # Let's renormalize the intensity in the range [0,1]
-    std_int=norm(intensity)
+    std_int=normalize(intensity)
     # What's the distance from the target intensity?
     errors.append(epsilon(std_int, target_im))
     phase=np.angle(u)
     ## Here I don't care about the discretization of the phase because we're in real space (that is actually the fourier plane for the code)
     #Generate weights and use them to obtain u
     w=weights(w,target_im,w_prev,std_int)
-    w=norm(w)
+    w=normalize(w)
     w_prev=w
     u=join_phase_ampl(phase,w)
     # Back to our fourier plane
@@ -143,5 +144,19 @@ plt.colorbar(im2,ax=axs[1,1])
 axs[1,1].set_title('Reconstructed image')
 plt.show()
 
-png.from_array(Final_ampl_phase.astype(uint8), 'L').save("Img/Phase_pattern_GSW.png")
-png.from_array((std_int*255).astype(uint8), 'L').save("Img/Rec_img_GSW.png")
+png.from_array(Final_ampl_phase.astype('uint8'), 'L').save("Img/Phase_pattern_GSW.png")
+png.from_array((std_int*255).astype('uint8'), 'L').save("Img/Rec_img_GSW.png")
+
+# extend the phase pattern
+SIZE_XX, SIZE_YY = 1000, 1000
+Extend_ampl_phase = np.tile( Final_ampl_phase, (SIZE_XX//SIZE_X,SIZE_YY//SIZE_Y) )[0:SIZE_XX,0:SIZE_YY]
+# To the real plane...
+u = join_phase_ampl(Final_ampl_phase,Beam_shape(SIZE_XX,SIZE_YY,sigma*10,sigma*10,0,0).T)
+u = sfft.fft2(u)
+u = sfft.fftshift(u)
+# Calculate the intensity
+intensity = np.square(np.abs(u))
+# Let's renormalize the intensity in the range [0,1]
+Extend_std_int = normalize(intensity)
+png.from_array(Extend_ampl_phase.astype('uint8'), 'L').save("Img/Phase_pattern_GSW_extended.png")
+png.from_array((Extend_std_int*255).astype('uint8'), 'L').save("Img/Rec_img_GSW_extended.png")
